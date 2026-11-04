@@ -611,7 +611,7 @@ function createPeerConnection(userId, isInitiator) {
     }
   };
 
-  pc.ontrack = (event) => {
+pc.ontrack = (event) => {
     let remoteVideo = document.getElementById(`video-${userId}`);
     if (!remoteVideo) {
       remoteVideo = document.createElement('video');
@@ -626,8 +626,26 @@ function createPeerConnection(userId, isInitiator) {
 
       videoGrid.appendChild(remoteVideo);
     }
-    remoteVideo.srcObject = event.streams[0];
+
+    // Cria uma MediaStream persistente para o elemento <video> remoto
+    if (!remoteVideo.srcObject) {
+      remoteVideo.srcObject = new MediaStream();
+    }
+
+    // Adiciona a nova faixa (áudio ou vídeo da tela) ao stream existente sem sobrescrevê-lo
+    const stream = remoteVideo.srcObject;
+    if (!stream.getTracks().some(t => t.id === event.track.id)) {
+      stream.addTrack(event.track);
+    }
+
     remoteVideo.play().catch(e => console.error('Erro na reprodução de mídia remota:', e));
+
+    // Remove a faixa do player caso seja encerrada pelo parceiro
+    event.track.onended = () => {
+      if (remoteVideo.srcObject) {
+        remoteVideo.srcObject.removeTrack(event.track);
+      }
+    };
   };
 
   pc.onnegotiationneeded = async () => {
@@ -666,6 +684,7 @@ socket.on('screen-granted', async () => {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     shareBtn.innerText = 'Parar Partilha';
 
+    // Prévia local (mutada)
     let localVideo = document.getElementById('local-screen-video');
     if (!localVideo) {
       localVideo = document.createElement('video');
@@ -683,10 +702,18 @@ socket.on('screen-granted', async () => {
       for (let userId in peers) {
         const pc = peers[userId];
         const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+
         if (sender) {
-          sender.replaceTrack(videoTrack);
+          await sender.replaceTrack(videoTrack);
         } else {
           pc.addTrack(videoTrack, screenStream);
+        }
+
+        // Força a oferta SDP para que o parceiro remoto atualize os canais de recepção
+        if (pc.signalingState === 'stable') {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('offer', { targetId: userId, offer });
         }
       }
 
@@ -700,7 +727,7 @@ socket.on('screen-granted', async () => {
   }
 });
 
-function stopScreenSharing() {
+async function stopScreenSharing() {
   if (screenStream) {
     screenStream.getTracks().forEach(track => track.stop());
     screenStream = null;
@@ -711,6 +738,13 @@ function stopScreenSharing() {
     const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
     if (sender) {
       pc.removeTrack(sender);
+
+      // Renegocia a remoção da faixa com o parceiro remoto
+      if (pc.signalingState === 'stable') {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('offer', { targetId: userId, offer });
+      }
     }
   }
 
