@@ -1,24 +1,180 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" 
+        content="default-src 'self'; 
+                 script-src 'self' 'unsafe-inline' https://anonycord-server.onrender.com; 
+                 connect-src 'self' https://anonycord-server.onrender.com wss://anonycord-server.onrender.com wss://* https://*; 
+                 style-src 'self' 'unsafe-inline'; 
+                 media-src 'self' blob:;
+                 img-src 'self' data:;">
+  <title>AnonyCord</title>
   <style>
-    body { background: #1e1e1e; color: white; font-family: sans-serif; }
-    #video-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-    video { background: black; border-radius: 8px; max-width: 300px; }
-    video.screen-share { max-width: 800px; width: 100%; border: 2px solid #5865F2; }
-    button { padding: 10px; background: #5865F2; color: white; border: none; cursor: pointer; }
-    button:disabled { background: #555; cursor: not-allowed; }
+    body { 
+      background: #000000; 
+      color: #ffffff; 
+      font-family: sans-serif; 
+      padding: 20px; 
+    }
+    
+    .controls { margin-bottom: 20px; }
+    
+    input, button { 
+      padding: 8px 12px; 
+      margin-right: 8px; 
+      font-size: 14px; 
+      border-radius: 4px; 
+    }
+    
+    input { 
+      background: #111111; 
+      color: #ffffff; 
+      border: 1px solid #fcc203; 
+      outline: none; 
+    }
+    input:focus { 
+      border-color: #ffe066; 
+      box-shadow: 0 0 5px rgba(252, 194, 3, 0.5); 
+    }
+    
+    button { 
+      background: #fcc203; 
+      color: #000000; 
+      font-weight: bold; 
+      border: none; 
+      cursor: pointer; 
+      transition: background 0.2s; 
+    }
+    button:hover { 
+      background: #e0ac00; 
+    }
+    button:disabled { 
+      background: #333333; 
+      color: #777777; 
+      cursor: not-allowed; 
+    }
+
+    .main-container { display: flex; gap: 20px; }
+    
+    #sidebar { 
+      width: 220px; 
+      background: #111111; 
+      padding: 15px; 
+      border-radius: 8px; 
+      border: 1px solid #222222; 
+    }
+    #sidebar h3 { 
+      color: #fcc203; 
+      margin-top: 0; 
+      border-bottom: 1px solid #fcc203; 
+      padding-bottom: 8px; 
+    }
+    
+    #user-list { list-style: none; padding: 0; margin-top: 10px; }
+    #user-list li { 
+      padding: 6px 10px; 
+      margin-bottom: 6px; 
+      background: #1a1a1a; 
+      border-left: 3px solid #fcc203; 
+      border-radius: 4px; 
+      font-size: 14px; 
+    }
+
+    #video-grid { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
+    video { 
+      width: 400px; 
+      height: 250px; 
+      background: #080808; 
+      border: 2px solid #fcc203; 
+      border-radius: 8px; 
+    }
+
+    /* Modal de Seleção de Tela */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #111111;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #fcc203;
+      max-width: 750px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      text-align: center;
+    }
+    .modal-content h2 { color: #fcc203; }
+    
+    .sources-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    .source-card {
+      background: #1a1a1a;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 200px;
+      border: 2px solid #333333;
+      transition: border-color 0.2s, transform 0.1s;
+    }
+    .source-card:hover {
+      border-color: #fcc203;
+      transform: scale(1.02);
+    }
+    .source-card img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+    .source-card p {
+      margin: 8px 0 0 0;
+      font-size: 12px;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body>
-  <input type="text" id="room-input" placeholder="ID da Sala">
-  <button id="join-btn">Entrar</button>
-  <button id="share-btn" disabled>Compartilhar Tela</button>
+  <div class="controls">
+    <input type="text" id="username-input" placeholder="Seu Nome (ex: Ian)">
+    <input type="text" id="room-input" placeholder="ID da Sala">
+    <button id="join-btn">Entrar</button>
+    <button id="share-btn">Compartilhar Tela</button>
+  </div>
 
-  <div id="video-grid"></div>
+  <div class="main-container">
+    <div id="sidebar">
+      <h3>Conectados</h3>
+      <ul id="user-list"></ul>
+    </div>
+    <div id="video-grid"></div>
+  </div>
 
-  <script src="http://localhost:3000/socket.io/socket.io.js"></script>
+  <!-- Modal Seletor de Telas -->
+  <div id="screen-picker-modal" class="modal">
+    <div class="modal-content">
+      <h2>Selecione o que deseja compartilhar</h2>
+      <div id="sources-grid" class="sources-grid"></div>
+      <button id="cancel-picker-btn" style="background: #da373c; color: white;">Cancelar</button>
+    </div>
+  </div>
+
+  <script src="https://anonycord-server.onrender.com/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
