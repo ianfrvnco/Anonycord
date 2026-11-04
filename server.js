@@ -53,7 +53,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('stop-screen', () => {
-    socket.to(currentRoom).emit('screen-stopped');
+    if (currentRoom) {
+      socket.to(currentRoom).emit('screen-stopped');
+    }
   });
 
   socket.on('disconnect', () => {
@@ -68,6 +70,9 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(3000, () => {
-  console.log('Servidor árbitro ativo na porta 3000');
+// Define a porta atribuída dinamicamente pelo Render ou usa 3000 se executado localmente
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+  console.log(`Servidor árbitro ativo na porta ${PORT}`);
 });
