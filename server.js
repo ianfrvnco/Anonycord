@@ -6,7 +6,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-// Armazena a estrutura: rooms[roomId] = { socketId: username }
 const rooms = {};
 
 io.on('connection', (socket) => {
@@ -22,18 +21,29 @@ io.on('connection', (socket) => {
 
     const userObj = { userId: socket.id, username: username || 'Anônimo' };
 
-    // Notifica quem já está na sala sobre o novo participante
     socket.to(roomId).emit('user-connected', userObj);
 
-    // Envia a lista dos participantes atuais para o recém-chegado
     const existingUsers = Object.entries(rooms[roomId]).map(([id, name]) => ({
       userId: id,
       username: name
     }));
     socket.emit('existing-users', existingUsers);
 
-    // Registra o novo usuário no objeto da sala
     rooms[roomId][socket.id] = userObj.username;
+  });
+
+  // Manipulador para saída voluntária da sala
+  socket.on('leave-room', () => {
+    if (currentRoom && rooms[currentRoom]) {
+      delete rooms[currentRoom][socket.id];
+      socket.to(currentRoom).emit('user-disconnected', socket.id);
+      socket.leave(currentRoom);
+      
+      if (Object.keys(rooms[currentRoom]).length === 0) {
+        delete rooms[currentRoom];
+      }
+      currentRoom = null;
+    }
   });
 
   socket.on('offer', ({ targetId, offer }) => {
@@ -70,7 +80,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Define a porta atribuída dinamicamente pelo Render ou usa 3000 se executado localmente
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {

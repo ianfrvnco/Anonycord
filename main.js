@@ -1,5 +1,5 @@
 const { app, BrowserWindow, desktopCapturer, session, ipcMain } = require('electron');
-// require('./server.js'); // Desativado pois o servidor está hospedado no Render
+const path = require('path'); // Adicionado módulo path
 
 let mainWindow;
 
@@ -7,6 +7,7 @@ function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1200, 
     height: 800,
+    icon: path.join(__dirname, 'icon.png'), // Define o ícone da janela/barra de tarefas
     webPreferences: { 
       nodeIntegration: true, 
       contextIsolation: false 
@@ -28,15 +29,19 @@ app.whenReady().then(() => {
       mainWindow.webContents.send('open-screen-picker', formattedSources);
 
       ipcMain.once('select-screen-source', (event, selectedId) => {
-        if (!selectedId) {
-          callback({});
-          return;
-        }
-        const selectedSource = sources.find(s => s.id === selectedId);
-        if (selectedSource) {
-          callback({ video: selectedSource, audio: 'loopback' });
-        } else {
-          callback({});
+        try {
+          if (!selectedId) {
+            callback({});
+            return;
+          }
+          const selectedSource = sources.find(s => s.id === selectedId);
+          if (selectedSource) {
+            callback({ video: selectedSource, audio: 'loopback' });
+          } else {
+            callback({});
+          }
+        } catch (err) {
+          console.log('Seleção de tela cancelada pelo usuário.');
         }
       });
     });

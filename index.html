@@ -9,7 +9,7 @@
                  style-src 'self' 'unsafe-inline'; 
                  media-src 'self' blob:;
                  img-src 'self' data:;">
-  <title>AnonyCord</title>
+  <title>AnonyCord v1.0.5</title>
   <style>
     body { 
       background: #000000; 
@@ -20,20 +20,20 @@
     
     .controls { margin-bottom: 20px; }
     
-    input, button { 
+    input, button, select { 
       padding: 8px 12px; 
       margin-right: 8px; 
       font-size: 14px; 
       border-radius: 4px; 
     }
     
-    input { 
+    input, select { 
       background: #111111; 
       color: #ffffff; 
       border: 1px solid #fcc203; 
       outline: none; 
     }
-    input:focus { 
+    input:focus, select:focus { 
       border-color: #ffe066; 
       box-shadow: 0 0 5px rgba(252, 194, 3, 0.5); 
     }
@@ -53,6 +53,15 @@
       background: #333333; 
       color: #777777; 
       cursor: not-allowed; 
+    }
+
+    /* Botão de Sair da Sala e Estados Ativos */
+    .btn-danger {
+      background: #da373c !important;
+      color: #ffffff !important;
+    }
+    .btn-danger:hover {
+      background: #a1282b !important;
     }
 
     .main-container { display: flex; gap: 20px; }
@@ -90,7 +99,7 @@
       border-radius: 8px; 
     }
 
-    /* Modal de Seleção de Tela */
+    /* Modais */
     .modal {
       display: none;
       position: fixed;
@@ -109,10 +118,39 @@
       width: 90%;
       max-height: 80vh;
       overflow-y: auto;
-      text-align: center;
     }
-    .modal-content h2 { color: #fcc203; }
+    .modal-content h2 { color: #fcc203; margin-top: 0; text-align: center; }
+
+    .option-group {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .option-group label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: #fcc203;
+      font-weight: bold;
+    }
+    .option-group select {
+      width: 100%;
+    }
     
+    .meter-container {
+      background: #1a1a1a;
+      border: 1px solid #333333;
+      height: 20px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    #mic-meter-fill {
+      background: #fcc203;
+      height: 100%;
+      width: 0%;
+      transition: width 0.05s ease-out, background-color 0.1s;
+    }
+
     .sources-grid {
       display: flex;
       flex-wrap: wrap;
@@ -151,10 +189,14 @@
 </head>
 <body>
   <div class="controls">
-    <input type="text" id="username-input" placeholder="Seu Nome (ex: Ian)">
+    <input type="text" id="username-input" placeholder="Seu Nome (ex: Matheus)">
     <input type="text" id="room-input" placeholder="ID da Sala">
     <button id="join-btn">Entrar</button>
+    <button id="leave-btn" class="btn-danger" style="display: none;">Sair da Sala</button>
     <button id="share-btn">Compartilhar Tela</button>
+    <button id="mute-btn">🎤 Mutar Mic</button>
+    <button id="deafen-btn">🎧 Silenciar Tudo</button>
+    <button id="options-btn">Opções</button>
   </div>
 
   <div class="main-container">
@@ -165,12 +207,56 @@
     <div id="video-grid"></div>
   </div>
 
+  <!-- Modal de Opções -->
+  <div id="options-modal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <h2>Opções e Atalhos</h2>
+      
+      <div class="option-group">
+        <label for="audio-input-select">Entrada de Áudio (Microfone):</label>
+        <select id="audio-input-select"></select>
+      </div>
+
+      <div class="option-group">
+        <label>Sensibilidade do Microfone:</label>
+        <div class="meter-container">
+          <div id="mic-meter-fill"></div>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <label for="audio-output-select">Saída de Áudio (Alto-falante):</label>
+        <select id="audio-output-select"></select>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+
+      <div class="option-group">
+        <label>Atalhos de Teclado (Clique para alterar):</label>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <span style="font-size: 13px;">Mutar Microfone:</span>
+          <input type="text" id="shortcut-mute-input" readonly style="width: 160px; text-align: center; cursor: pointer; font-weight: bold;">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 13px;">Silenciar Áudio e Mic:</span>
+          <input type="text" id="shortcut-deafen-input" readonly style="width: 160px; text-align: center; cursor: pointer; font-weight: bold;">
+        </div>
+      </div>
+
+      <div style="text-align: right; margin-top: 25px;">
+        <button id="close-options-btn">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Seletor de Telas -->
   <div id="screen-picker-modal" class="modal">
     <div class="modal-content">
       <h2>Selecione o que deseja compartilhar</h2>
       <div id="sources-grid" class="sources-grid"></div>
-      <button id="cancel-picker-btn" style="background: #da373c; color: white;">Cancelar</button>
+      <button id="cancel-picker-btn" class="btn-danger">Cancelar</button>
     </div>
   </div>
 
