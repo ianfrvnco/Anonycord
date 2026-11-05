@@ -12,7 +12,6 @@ const deafenBtn = document.getElementById('deafen-btn');
 const videoGrid = document.getElementById('video-grid');
 const userList = document.getElementById('user-list');
 
-// Modais
 const screenPickerModal = document.getElementById('screen-picker-modal');
 const sourcesGrid = document.getElementById('sources-grid');
 const cancelPickerBtn = document.getElementById('cancel-picker-btn');
@@ -30,11 +29,9 @@ let screenStream = null;
 let currentRoom = null;
 const peers = {};
 
-// Estados de Áudio
 let isMuted = false;
 let isDeafened = false;
 
-// Atalhos
 let shortcuts = {
   mute: localStorage.getItem('shortcut_mute') || 'Ctrl+M',
   deafen: localStorage.getItem('shortcut_deafen') || 'Ctrl+D'
@@ -48,11 +45,26 @@ let animFrameId = null;
 const rtcConfig = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelay',
+      credential: 'openrelay'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelay',
+      credential: 'openrelay'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelay',
+      credential: 'openrelay'
+    }
   ]
 };
 
-// Sintetizador de Efeitos Sonoros (Web Audio API)
 function playSoundEffect(type) {
   try {
     if (!audioCtx) {
@@ -70,7 +82,7 @@ function playSoundEffect(type) {
     gain.connect(audioCtx.destination);
 
     switch (type) {
-      case 'self-join': // Entrada própria (Tom ascendente)
+      case 'self-join':
         osc.type = 'sine';
         osc.frequency.setValueAtTime(440, now);
         osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
@@ -80,7 +92,7 @@ function playSoundEffect(type) {
         osc.stop(now + 0.22);
         break;
 
-      case 'self-leave': // 2. Saída própria da sala (Tom descendente duplo)
+      case 'self-leave':
         osc.type = 'sine';
         osc.frequency.setValueAtTime(880, now);
         osc.frequency.exponentialRampToValueAtTime(440, now + 0.18);
@@ -90,7 +102,7 @@ function playSoundEffect(type) {
         osc.stop(now + 0.2);
         break;
 
-      case 'user-join': // Entrada de outro usuário (Bip duplo)
+      case 'user-join':
         osc.type = 'sine';
         osc.frequency.setValueAtTime(523.25, now);
         osc.frequency.setValueAtTime(659.25, now + 0.08);
@@ -100,7 +112,7 @@ function playSoundEffect(type) {
         osc.stop(now + 0.18);
         break;
 
-      case 'user-leave': // 3. Saída de outro usuário da sala (Tom grave descendente curto)
+      case 'user-leave':
         osc.type = 'sine';
         osc.frequency.setValueAtTime(659.25, now);
         osc.frequency.setValueAtTime(523.25, now + 0.08);
@@ -155,7 +167,6 @@ function playSoundEffect(type) {
   }
 }
 
-// Inicialização de Áudio Local
 async function initLocalAudio(deviceId = null) {
   try {
     if (localStream) {
@@ -181,7 +192,6 @@ async function initLocalAudio(deviceId = null) {
 }
 initLocalAudio();
 
-// Medidor de Sensibilidade
 function setupMicMeter(stream) {
   if (!stream || stream.getAudioTracks().length === 0) return;
 
@@ -227,21 +237,18 @@ function setupMicMeter(stream) {
   updateMeter();
 }
 
-// Alternar Mute Microfone
 function toggleMute() {
   isMuted = !isMuted;
   applyAudioStates();
   playSoundEffect(isMuted ? 'mute' : 'unmute');
 }
 
-// Alternar Silenciar Tudo (Ensurdecer)
 function toggleDeafen() {
   isDeafened = !isDeafened;
   applyAudioStates();
   playSoundEffect(isDeafened ? 'deafen' : 'undeafen');
 }
 
-// Aplicação dos estados de áudio
 function applyAudioStates() {
   const micEnabled = !isMuted && !isDeafened;
 
@@ -271,12 +278,17 @@ function applyAudioStates() {
     deafenBtn.classList.remove('btn-danger');
     deafenBtn.innerText = '🎧 Silenciar Tudo';
   }
+
+  if (currentRoom) {
+    socket.emit('audio-state-change', { isMuted, isDeafened });
+  }
+  const username = usernameInput.value.trim() || 'Anônimo';
+  addUserToList('me', `${username} (Você)`, isMuted, isDeafened);
 }
 
 muteBtn.addEventListener('click', toggleMute);
 deafenBtn.addEventListener('click', toggleDeafen);
 
-// Gerenciador de Atalhos
 function parseKeyEvent(e) {
   const parts = [];
   if (e.ctrlKey) parts.push('Ctrl');
@@ -341,7 +353,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Listagem de Dispositivos de Áudio
 async function getAudioDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -422,7 +433,6 @@ navigator.mediaDevices.ondevicechange = () => {
   getAudioDevices();
 };
 
-// Modal Seletor de Telas (IPC)
 ipcRenderer.on('open-screen-picker', (event, sources) => {
   sourcesGrid.innerHTML = '';
   sources.forEach(source => {
@@ -446,7 +456,6 @@ cancelPickerBtn.addEventListener('click', () => {
   ipcRenderer.send('select-screen-source', null);
 });
 
-// Entrar na Sala
 joinBtn.addEventListener('click', async () => {
   const roomId = roomInput.value.trim();
   const username = usernameInput.value.trim() || 'Anônimo';
@@ -461,7 +470,7 @@ joinBtn.addEventListener('click', async () => {
   }
 
   currentRoom = roomId;
-  socket.emit('join-room', { roomId, username });
+  socket.emit('join-room', { roomId, username, isMuted, isDeafened });
 
   playSoundEffect('self-join');
 
@@ -471,10 +480,9 @@ joinBtn.addEventListener('click', async () => {
   usernameInput.disabled = true;
   roomInput.disabled = true;
 
-  addUserToList('me', `${username} (Você)`);
+  addUserToList('me', `${username} (Você)`, isMuted, isDeafened);
 });
 
-// 1. Ação de Sair da Sala
 leaveBtn.addEventListener('click', () => {
   leaveRoom();
 });
@@ -482,7 +490,6 @@ leaveBtn.addEventListener('click', () => {
 function leaveRoom() {
   if (!currentRoom) return;
 
-  // Notifica o servidor e limpa estados P2P
   socket.emit('leave-room');
 
   if (screenStream) {
@@ -494,14 +501,11 @@ function leaveRoom() {
     delete peers[userId];
   }
 
-  // Toca o aviso sonoro de saída própria
   playSoundEffect('self-leave');
 
-  // Limpa elementos visuais
   videoGrid.innerHTML = '';
   userList.innerHTML = '';
 
-  // Restaura o estado dos controles
   currentRoom = null;
   joinBtn.disabled = false;
   joinBtn.innerText = 'Entrar';
@@ -511,12 +515,21 @@ function leaveRoom() {
   roomInput.disabled = false;
 }
 
-function addUserToList(userId, name) {
-  if (document.getElementById(`user-li-${userId}`)) return;
-  const li = document.createElement('li');
-  li.id = `user-li-${userId}`;
-  li.innerText = name;
-  userList.appendChild(li);
+function addUserToList(userId, name, userIsMuted = false, userIsDeafened = false) {
+  let li = document.getElementById(`user-li-${userId}`);
+  if (!li) {
+    li = document.createElement('li');
+    li.id = `user-li-${userId}`;
+    userList.appendChild(li);
+  }
+
+  li.innerHTML = `
+    <span class="user-name-text">${name}</span>
+    <div class="user-status-badges">
+      ${userIsDeafened ? '<span class="badge-icon badge-deafened" title="Silenciado">🎧</span>' : ''}
+      ${userIsMuted && !userIsDeafened ? '<span class="badge-icon badge-muted" title="Mutado">🎤</span>' : ''}
+    </div>
+  `;
 }
 
 function removeUserFromList(userId) {
@@ -524,21 +537,28 @@ function removeUserFromList(userId) {
   if (li) li.remove();
 }
 
-// Eventos do Socket.IO
-socket.on('user-connected', ({ userId, username }) => {
+socket.on('user-connected', ({ userId, username, isMuted: remoteMuted, isDeafened: remoteDeafened }) => {
   playSoundEffect('user-join');
-  addUserToList(userId, username);
+  addUserToList(userId, username, remoteMuted, remoteDeafened);
   createPeerConnection(userId, true);
 });
 
 socket.on('existing-users', (users) => {
-  users.forEach(({ userId, username }) => {
-    addUserToList(userId, username);
+  users.forEach(({ userId, username, isMuted: remoteMuted, isDeafened: remoteDeafened }) => {
+    addUserToList(userId, username, remoteMuted, remoteDeafened);
     createPeerConnection(userId, false);
   });
 });
 
-// 3. Aviso sonoro e remoção quando outro usuário sai
+socket.on('user-audio-state-changed', ({ userId, isMuted: remoteMuted, isDeafened: remoteDeafened }) => {
+  const li = document.getElementById(`user-li-${userId}`);
+  if (li) {
+    const nameSpan = li.querySelector('.user-name-text');
+    const name = nameSpan ? nameSpan.innerText : 'Anônimo';
+    addUserToList(userId, name, remoteMuted, remoteDeafened);
+  }
+});
+
 socket.on('user-disconnected', (userId) => {
   playSoundEffect('user-leave');
   removeUserFromList(userId);
@@ -611,7 +631,7 @@ function createPeerConnection(userId, isInitiator) {
     }
   };
 
-pc.ontrack = (event) => {
+  pc.ontrack = (event) => {
     let remoteVideo = document.getElementById(`video-${userId}`);
     if (!remoteVideo) {
       remoteVideo = document.createElement('video');
@@ -627,12 +647,10 @@ pc.ontrack = (event) => {
       videoGrid.appendChild(remoteVideo);
     }
 
-    // Cria uma MediaStream persistente para o elemento <video> remoto
     if (!remoteVideo.srcObject) {
       remoteVideo.srcObject = new MediaStream();
     }
 
-    // Adiciona a nova faixa (áudio ou vídeo da tela) ao stream existente sem sobrescrevê-lo
     const stream = remoteVideo.srcObject;
     if (!stream.getTracks().some(t => t.id === event.track.id)) {
       stream.addTrack(event.track);
@@ -640,7 +658,6 @@ pc.ontrack = (event) => {
 
     remoteVideo.play().catch(e => console.error('Erro na reprodução de mídia remota:', e));
 
-    // Remove a faixa do player caso seja encerrada pelo parceiro
     event.track.onended = () => {
       if (remoteVideo.srcObject) {
         remoteVideo.srcObject.removeTrack(event.track);
@@ -665,7 +682,6 @@ pc.ontrack = (event) => {
   return pc;
 }
 
-// Compartilhamento de Tela
 shareBtn.addEventListener('click', () => {
   if (!currentRoom) {
     alert('Entre em uma sala primeiro!');
@@ -684,7 +700,6 @@ socket.on('screen-granted', async () => {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     shareBtn.innerText = 'Parar Partilha';
 
-    // Prévia local (mutada)
     let localVideo = document.getElementById('local-screen-video');
     if (!localVideo) {
       localVideo = document.createElement('video');
@@ -709,7 +724,6 @@ socket.on('screen-granted', async () => {
           pc.addTrack(videoTrack, screenStream);
         }
 
-        // Força a oferta SDP para que o parceiro remoto atualize os canais de recepção
         if (pc.signalingState === 'stable') {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -739,7 +753,6 @@ async function stopScreenSharing() {
     if (sender) {
       pc.removeTrack(sender);
 
-      // Renegocia a remoção da faixa com o parceiro remoto
       if (pc.signalingState === 'stable') {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);

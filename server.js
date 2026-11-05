@@ -6,12 +6,13 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+// Estrutura: rooms[roomId][socketId] = { userId, username, isMuted, isDeafened }
 const rooms = {};
 
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('join-room', ({ roomId, username }) => {
+  socket.on('join-room', ({ roomId, username, isMuted = false, isDeafened = false }) => {
     currentRoom = roomId;
     socket.join(roomId);
 
@@ -19,20 +20,37 @@ io.on('connection', (socket) => {
       rooms[roomId] = {};
     }
 
-    const userObj = { userId: socket.id, username: username || 'Anônimo' };
+    const userObj = { 
+      userId: socket.id, 
+      username: username || 'Anônimo',
+      isMuted,
+      isDeafened
+    };
 
+    rooms[roomId][socket.id] = userObj;
+
+    // Notifica os participantes já conectados sobre o novo usuário com seu estado de áudio
     socket.to(roomId).emit('user-connected', userObj);
 
-    const existingUsers = Object.entries(rooms[roomId]).map(([id, name]) => ({
-      userId: id,
-      username: name
-    }));
+    // Envia a lista dos participantes atuais e seus estados de áudio
+    const existingUsers = Object.values(rooms[roomId]).filter(u => u.userId !== socket.id);
     socket.emit('existing-users', existingUsers);
-
-    rooms[roomId][socket.id] = userObj.username;
   });
 
-  // Manipulador para saída voluntária da sala
+  // Evento de alteração de estado de áudio (Mute / Deafen)
+  socket.on('audio-state-change', ({ isMuted, isDeafened }) => {
+    if (currentRoom && rooms[currentRoom] && rooms[currentRoom][socket.id]) {
+      rooms[currentRoom][socket.id].isMuted = isMuted;
+      rooms[currentRoom][socket.id].isDeafened = isDeafened;
+
+      socket.to(currentRoom).emit('user-audio-state-changed', {
+        userId: socket.id,
+        isMuted,
+        isDeafened
+      });
+    }
+  });
+
   socket.on('leave-room', () => {
     if (currentRoom && rooms[currentRoom]) {
       delete rooms[currentRoom][socket.id];

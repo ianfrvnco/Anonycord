@@ -1,5 +1,9 @@
 const { app, BrowserWindow, desktopCapturer, session, ipcMain } = require('electron');
-const path = require('path'); // Adicionado módulo path
+const path = require('path');
+
+// Desativa o mascaramento de IP por mDNS para permitir P2P entre computadores na mesma rede (LAN)
+app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
 let mainWindow;
 
@@ -7,7 +11,7 @@ function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1200, 
     height: 800,
-    icon: path.join(__dirname, 'icon.png'), // Define o ícone da janela/barra de tarefas
+    icon: path.join(__dirname, 'icon.png'),
     webPreferences: { 
       nodeIntegration: true, 
       contextIsolation: false 

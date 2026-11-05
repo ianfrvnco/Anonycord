@@ -9,7 +9,7 @@
                  style-src 'self' 'unsafe-inline'; 
                  media-src 'self' blob:;
                  img-src 'self' data:;">
-  <title>AnonyCord v1.0.6</title>
+  <title>AnonyCord v1.0.7</title>
   <style>
     body { 
       background: #000000; 
@@ -55,7 +55,6 @@
       cursor: not-allowed; 
     }
 
-    /* Botão de Sair da Sala e Estados Ativos */
     .btn-danger {
       background: #da373c !important;
       color: #ffffff !important;
@@ -88,6 +87,29 @@
       border-left: 3px solid #fcc203; 
       border-radius: 4px; 
       font-size: 14px; 
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Badges de Estado de Áudio */
+    .user-status-badges {
+      display: flex;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .badge-icon {
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-weight: bold;
+    }
+    .badge-muted {
+      background: #da373c;
+      color: #ffffff;
+    }
+    .badge-deafened {
+      background: #7289da;
+      color: #ffffff;
     }
 
     #video-grid { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
@@ -99,7 +121,6 @@
       border-radius: 8px; 
     }
 
-    /* Modais */
     .modal {
       display: none;
       position: fixed;
@@ -189,7 +210,7 @@
 </head>
 <body>
   <div class="controls">
-    <input type="text" id="username-input" placeholder="Pseudônimo">
+    <input type="text" id="username-input" placeholder="Seu Nome (ex: Ian)">
     <input type="text" id="room-input" placeholder="ID da Sala">
     <button id="join-btn">Entrar</button>
     <button id="leave-btn" class="btn-danger" style="display: none;">Sair da Sala</button>
