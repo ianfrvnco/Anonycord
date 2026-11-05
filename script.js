@@ -625,17 +625,17 @@ function createPeerConnection(userId, isInitiator) {
   const pc = new RTCPeerConnection(rtcConfig);
   peers[userId] = pc;
 
-  // Fixa a ordem das m-lines no SDP (1º Áudio, 2º Vídeo) desde a criação do Peer
+  // 1. Reserva as canaletas na ordem exata (1º Áudio, 2º Vídeo)
   pc.addTransceiver('audio', { direction: 'sendrecv' });
   pc.addTransceiver('video', { direction: 'sendrecv' });
 
-  // Anexa o áudio do microfone local, se já estiver capturado
+  // 2. Associa o microfone local ao sender de áudio de forma segura
   if (localStream) {
     const audioTrack = localStream.getAudioTracks()[0];
     if (audioTrack) {
-      const audioSender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
-      if (audioSender) {
-        audioSender.replaceTrack(audioTrack);
+      const audioTransceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+      if (audioTransceiver && audioTransceiver.sender) {
+        audioTransceiver.sender.replaceTrack(audioTrack);
       }
     }
   }
@@ -660,8 +660,6 @@ function createPeerConnection(userId, isInitiator) {
       }
 
       videoGrid.appendChild(remoteVideo);
-      
-      // Inicia a auditoria de recepção no participante remoto
       startReceiverMonitor(userId);
     }
 
@@ -685,7 +683,6 @@ function createPeerConnection(userId, isInitiator) {
 
   pc.onnegotiationneeded = async () => {
     try {
-      // Bloqueia tentativas de oferta se a conexão não estiver no estado estável
       if (pc.signalingState !== 'stable') {
         console.warn(`[WebRTC] Renegociação adiada. Estado atual: ${pc.signalingState}`);
         return;
@@ -747,10 +744,11 @@ socket.on('screen-granted', async () => {
 
       for (let userId in peers) {
         const pc = peers[userId];
-        const videoSender = pc.getSenders().find(s => s.track ? s.track.kind === 'video' : true);
-
-        if (videoSender) {
-          await videoSender.replaceTrack(videoTrack);
+        
+        // Localiza EXATAMENTE a canaleta de vídeo pelo Transceiver
+        const videoTransceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+        if (videoTransceiver && videoTransceiver.sender) {
+          await videoTransceiver.sender.replaceTrack(videoTrack);
         }
 
         startNetworkMonitor(userId);
@@ -774,9 +772,10 @@ async function stopScreenSharing() {
 
   for (let userId in peers) {
     const pc = peers[userId];
-    const videoSender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-    if (videoSender) {
-      await videoSender.replaceTrack(null);
+    const videoTransceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+    if (videoTransceiver && videoTransceiver.sender) {
+      // Remove o vídeo mantendo a estrutura SDP limpa
+      await videoTransceiver.sender.replaceTrack(null);
     }
   }
 
