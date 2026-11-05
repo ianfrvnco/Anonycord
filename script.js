@@ -179,7 +179,7 @@ async function initLocalAudio(deviceId = null) {
     };
 
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    
+
     localStream.getAudioTracks().forEach(track => {
       track.enabled = !isMuted && !isDeafened;
     });
@@ -294,7 +294,7 @@ function parseKeyEvent(e) {
   if (e.ctrlKey) parts.push('Ctrl');
   if (e.altKey) parts.push('Alt');
   if (e.shiftKey) parts.push('Shift');
-  
+
   const keyUpper = e.key.toUpperCase();
   if (!['CONTROL', 'ALT', 'SHIFT', 'META'].includes(keyUpper)) {
     parts.push(keyUpper);
@@ -645,6 +645,9 @@ function createPeerConnection(userId, isInitiator) {
       }
 
       videoGrid.appendChild(remoteVideo);
+
+      // ---> ADICIONE AQUI: Inicia o monitoramento de recepção assim que o quadro remoto for criado
+      startReceiverMonitor(userId);
     }
 
     if (!remoteVideo.srcObject) {
@@ -714,21 +717,31 @@ socket.on('screen-granted', async () => {
 
     const videoTrack = screenStream.getVideoTracks()[0];
     if (videoTrack) {
+
+      console.log('--- [DEBUG CAPTURA TELA] ---');
+      console.log('ID da faixa:', videoTrack.id);
+      console.log('Rótulo:', videoTrack.label);
+      console.log('Estado da faixa (readyState):', videoTrack.readyState); // Deve ser "live"
+      console.log('Ativa/Enabled:', videoTrack.enabled);                   // Deve ser true
+      console.log('Mutada/Muted:', videoTrack.muted);                       // Deve ser false
+      console.log('Configurações:', videoTrack.getSettings());             // Resolução e FPS
+      console.log('----------------------------');
+
       for (let userId in peers) {
         const pc = peers[userId];
-        const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+        console.log(`[DEBUG P2P ${userId}] Estado da sinalização:`, pc.signalingState);
+        console.log(`[DEBUG P2P ${userId}] Estado da conexão ICE:`, pc.iceConnectionState);
 
-        if (sender) {
-          await sender.replaceTrack(videoTrack);
-        } else {
-          pc.addTrack(videoTrack, screenStream);
-        }
+        const senders = pc.getSenders();
+        console.log(`[DEBUG P2P ${userId}] Total de Senders ativos:`, senders.length);
 
-        if (pc.signalingState === 'stable') {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('offer', { targetId: userId, offer });
-        }
+        senders.forEach((sender, index) => {
+          if (sender.track) {
+            console.log(` -> Sender #${index} [${sender.track.kind}]: ID ${sender.track.id}, Estado: ${sender.track.readyState}`);
+          } else {
+            console.warn(` -> Sender #${index}: Sem faixa vinculada (null)!`);
+          }
+        });
       }
 
       videoTrack.onended = () => {
@@ -768,6 +781,53 @@ async function stopScreenSharing() {
 
   shareBtn.innerText = 'Compartilhar Tela';
   socket.emit('stop-screen');
+}
+
+// Diagnóstico de tráfego de saída
+function startNetworkMonitor(userId) {
+  const pc = peers[userId];
+  if (!pc) return;
+
+  const intervalId = setInterval(async () => {
+    if (pc.iceConnectionState === 'closed') {
+      clearInterval(intervalId);
+      return;
+    }
+
+    const stats = await pc.getStats();
+    stats.forEach(report => {
+      // Monitora o envio de vídeo (Transmissor)
+      if (report.type === 'outbound-rtp' && report.kind === 'video') {
+        console.log(`--- [NETWORK STATS ENVIANDO -> ${userId}] ---`);
+        console.log(`Pacotes enviados: ${report.packetsSent}`);
+        console.log(`Bytes enviados: ${(report.bytesSent / 1024 / 1024).toFixed(2)} MB`);
+        console.log(`Quadros codificados (framesEncoded): ${report.framesEncoded}`);
+        console.log(`FPS de envio: ${report.framesPerSecond || 0}`);
+        console.log(`Resolução enviada: ${report.frameWidth}x${report.frameHeight}`);
+        console.log('---------------------------------------------');
+      }
+    });
+  }, 3000); // Exibe no console a cada 3 segundos
+}
+
+function startReceiverMonitor(userId) {
+  const pc = peers[userId];
+  if (!pc) return;
+
+  setInterval(async () => {
+    const stats = await pc.getStats();
+    stats.forEach(report => {
+      // Monitora o recebimento de vídeo (Receptor)
+      if (report.type === 'inbound-rtp' && report.kind === 'video') {
+        console.log(`=== [NETWORK STATS RECEBENDO <- ${userId}] ===`);
+        console.log(`Bytes recebidos: ${(report.bytesReceived / 1024 / 1024).toFixed(2)} MB`);
+        console.log(`Pacotes recebidos: ${report.packetsReceived}`);
+        console.log(`Pacotes perdidos: ${report.packetsLost}`);
+        console.log(`Quadros decodificados (framesDecoded): ${report.framesDecoded}`);
+        console.log('==============================================');
+      }
+    });
+  }, 3000);
 }
 
 document.addEventListener('dragover', (event) => event.preventDefault());
