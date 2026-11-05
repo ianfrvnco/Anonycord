@@ -573,7 +573,15 @@ socket.on('user-disconnected', (userId) => {
 socket.on('offer', async ({ senderId, offer }) => {
   const pc = getOrCreatePeerConnection(senderId);
   try {
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-remote-offer') {
+      await Promise.all([
+        pc.setLocalDescription({ type: 'rollback' }),
+        pc.setRemoteDescription(new RTCSessionDescription(offer))
+      ]);
+    } else {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    }
+
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     socket.emit('answer', { targetId: senderId, answer });
@@ -617,12 +625,19 @@ function createPeerConnection(userId, isInitiator) {
   const pc = new RTCPeerConnection(rtcConfig);
   peers[userId] = pc;
 
-  if (localStream) {
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-  }
+  // Fixa a ordem das m-lines no SDP (1º Áudio, 2º Vídeo) desde a criação do Peer
+  pc.addTransceiver('audio', { direction: 'sendrecv' });
+  pc.addTransceiver('video', { direction: 'sendrecv' });
 
-  if (screenStream) {
-    screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+  // Anexa o áudio do microfone local, se já estiver capturado
+  if (localStream) {
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) {
+      const audioSender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+      if (audioSender) {
+        audioSender.replaceTrack(audioTrack);
+      }
+    }
   }
 
   pc.onicecandidate = (event) => {
@@ -645,8 +660,8 @@ function createPeerConnection(userId, isInitiator) {
       }
 
       videoGrid.appendChild(remoteVideo);
-
-      // ---> ADICIONE AQUI: Inicia o monitoramento de recepção assim que o quadro remoto for criado
+      
+      // Inicia a auditoria de recepção no participante remoto
       startReceiverMonitor(userId);
     }
 
@@ -670,7 +685,15 @@ function createPeerConnection(userId, isInitiator) {
 
   pc.onnegotiationneeded = async () => {
     try {
+      // Bloqueia tentativas de oferta se a conexão não estiver no estado estável
+      if (pc.signalingState !== 'stable') {
+        console.warn(`[WebRTC] Renegociação adiada. Estado atual: ${pc.signalingState}`);
+        return;
+      }
+
       const offer = await pc.createOffer();
+      if (pc.signalingState !== 'stable') return;
+
       await pc.setLocalDescription(offer);
       socket.emit('offer', { targetId: userId, offer });
     } catch (err) {
@@ -717,31 +740,20 @@ socket.on('screen-granted', async () => {
 
     const videoTrack = screenStream.getVideoTracks()[0];
     if (videoTrack) {
-
       console.log('--- [DEBUG CAPTURA TELA] ---');
       console.log('ID da faixa:', videoTrack.id);
-      console.log('Rótulo:', videoTrack.label);
-      console.log('Estado da faixa (readyState):', videoTrack.readyState); // Deve ser "live"
-      console.log('Ativa/Enabled:', videoTrack.enabled);                   // Deve ser true
-      console.log('Mutada/Muted:', videoTrack.muted);                       // Deve ser false
-      console.log('Configurações:', videoTrack.getSettings());             // Resolução e FPS
+      console.log('Estado:', videoTrack.readyState);
       console.log('----------------------------');
 
       for (let userId in peers) {
         const pc = peers[userId];
-        console.log(`[DEBUG P2P ${userId}] Estado da sinalização:`, pc.signalingState);
-        console.log(`[DEBUG P2P ${userId}] Estado da conexão ICE:`, pc.iceConnectionState);
+        const videoSender = pc.getSenders().find(s => s.track ? s.track.kind === 'video' : true);
 
-        const senders = pc.getSenders();
-        console.log(`[DEBUG P2P ${userId}] Total de Senders ativos:`, senders.length);
+        if (videoSender) {
+          await videoSender.replaceTrack(videoTrack);
+        }
 
-        senders.forEach((sender, index) => {
-          if (sender.track) {
-            console.log(` -> Sender #${index} [${sender.track.kind}]: ID ${sender.track.id}, Estado: ${sender.track.readyState}`);
-          } else {
-            console.warn(` -> Sender #${index}: Sem faixa vinculada (null)!`);
-          }
-        });
+        startNetworkMonitor(userId);
       }
 
       videoTrack.onended = () => {
@@ -762,15 +774,9 @@ async function stopScreenSharing() {
 
   for (let userId in peers) {
     const pc = peers[userId];
-    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-    if (sender) {
-      pc.removeTrack(sender);
-
-      if (pc.signalingState === 'stable') {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('offer', { targetId: userId, offer });
-      }
+    const videoSender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+    if (videoSender) {
+      await videoSender.replaceTrack(null);
     }
   }
 
