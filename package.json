@@ -1,6 +1,6 @@
 {
   "name": "anonycord",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Aplicativo P2P de áudio e compartilhamento de tela",
   "main": "main.js",
   "scripts": {

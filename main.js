@@ -18,6 +18,10 @@ function createWindow () {
     }
   });
 
+  mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow.webContents.send('app-version', app.getVersion());
+  });
+
   mainWindow.loadFile('index.html');
 }
 

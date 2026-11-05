@@ -1,6 +1,10 @@
 const { ipcRenderer } = require('electron');
 const socket = io('https://anonycord-server.onrender.com');
 
+ipcRenderer.on('app-version', (_event, version) => {
+  document.getElementById('app-version').textContent = `AnonyCord v${version}`;
+});
+
 const usernameInput = document.getElementById('username-input');
 const roomInput = document.getElementById('room-input');
 const joinBtn = document.getElementById('join-btn');
@@ -573,15 +577,7 @@ socket.on('user-disconnected', (userId) => {
 socket.on('offer', async ({ senderId, offer }) => {
   const pc = getOrCreatePeerConnection(senderId);
   try {
-    if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-remote-offer') {
-      await Promise.all([
-        pc.setLocalDescription({ type: 'rollback' }),
-        pc.setRemoteDescription(new RTCSessionDescription(offer))
-      ]);
-    } else {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    }
-
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     socket.emit('answer', { targetId: senderId, answer });
@@ -594,7 +590,9 @@ socket.on('answer', async ({ senderId, answer }) => {
   const pc = peers[senderId];
   if (pc) {
     try {
-      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      if (pc.signalingState === 'have-local-offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      }
     } catch (err) {
       console.error('Erro ao aplicar resposta WebRTC:', err);
     }
@@ -625,11 +623,11 @@ function createPeerConnection(userId, isInitiator) {
   const pc = new RTCPeerConnection(rtcConfig);
   peers[userId] = pc;
 
-  // 1. Reserva as canaletas na ordem exata (1º Áudio, 2º Vídeo)
+  // 1. Reserva as canaletas na ordem fixa (1º Áudio, 2º Vídeo)
   pc.addTransceiver('audio', { direction: 'sendrecv' });
   pc.addTransceiver('video', { direction: 'sendrecv' });
 
-  // 2. Associa o microfone local ao sender de áudio de forma segura
+  // 2. Vincula o áudio local ao transceiver reservado
   if (localStream) {
     const audioTrack = localStream.getAudioTracks()[0];
     if (audioTrack) {
@@ -681,10 +679,14 @@ function createPeerConnection(userId, isInitiator) {
     };
   };
 
+  // Previne a colisão de ofertas (Glare): apenas o iniciador dispara a oferta inicial
   pc.onnegotiationneeded = async () => {
     try {
+      if (!isInitiator && !pc.remoteDescription) {
+        return; // Ignora disparos automáticos no cliente que está aguardando a oferta
+      }
+
       if (pc.signalingState !== 'stable') {
-        console.warn(`[WebRTC] Renegociação adiada. Estado atual: ${pc.signalingState}`);
         return;
       }
 
